@@ -1,0 +1,24 @@
+# Public images to copy into Harbor, one per line. Read by mirror-images.sh.
+#
+# Format: any image reference docker can pull.
+#   grafana/grafana:13.2.4-distroless      -> docker.io/grafana/grafana:...
+#   busybox:1.37                           -> docker.io/library/busybox:1.37
+#   quay.io/kiwigrid/k8s-sidecar:2.14.1    -> registry kept as given
+# In Harbor each becomes <HARBOR>/<HARBOR_PROJECT>/<path>:<tag>, the source
+# registry (and Docker Hub's library/) dropped, e.g.
+#   grafana/grafana:13.2.4-distroless  -> harbor.customer.local/library/grafana/grafana:13.2.4-distroless
+#   busybox:1.37                       -> harbor.customer.local/library/busybox:1.37
+#
+# Pin tags (never :latest). Blank lines and lines starting with # are skipped.
+# VKS add-on images (Istio, cert-manager, Headlamp...) are NOT listed: VKS
+# serves those from the Supervisor itself.
+
+# Grafana (supervisor/applications/customer-cluster-01-grafana.yaml, chart 13.5.1)
+grafana/grafana:13.2.4-distroless
+curlimages/curl:8.22.0
+
+# Sample app (customer-cluster-01/apps/sample-app/)
+nginxinc/nginx-unprivileged:1.27-alpine
+
+# Pull tests (docs/harbor-trust.md, docs/proxy.md)
+busybox:1.37

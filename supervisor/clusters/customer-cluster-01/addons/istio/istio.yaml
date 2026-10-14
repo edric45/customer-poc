@@ -1,0 +1,64 @@
+# Istio on customer-cluster-01, sidecar mode, as a VKS add-on.
+#
+# Ingress is the Gateway API: a Gateway with gatewayClassName "istio", for
+# which istiod creates an Envoy Deployment and a LoadBalancer Service on
+# demand (customer-cluster-01/platform/gateway.yaml). The Gateway API CRDs come
+# with every VKS cluster (v1.4.0, standard channel), so no gateway-api add-on.
+# The add-on's classic ingress/egress gateways are therefore off.
+#
+# Releases on offer, and the settings one accepts:
+#   kubectl -n vmware-system-vks-public get addonreleases | grep istio
+#   kubectl -n vmware-system-vks-public get addonconfigdefinition \
+#     istio.kubernetes.vmware.com.1.30.0---vmware.1-vks.1 -o yaml
+apiVersion: addons.kubernetes.vmware.com/v1alpha1
+kind: AddonConfig
+metadata:
+  name: customer-cluster-01-istio
+  namespace: customer-ns
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  values:
+    istio:
+      # Sidecar mode. Istio CNI is ON even so: without it every meshed pod gets
+      # an istio-init container needing NET_ADMIN/NET_RAW, which VKS's default
+      # Pod Security "restricted" profile rejects. With CNI, a meshed namespace
+      # only needs the "baseline" label.
+      ambientMode:
+        enabled: false
+      istioCNI:
+        enabled: true
+      gateways:
+        ingress:
+          enabled: false
+        egress:
+          enabled: false
+      # PERMISSIVE: meshed pods accept mTLS and plain traffic. Tighten per
+      # namespace with a PeerAuthentication.
+      enableStrictMTLS: false
+      pilot:
+        replicas: 2
+      # Envoy access logs to stdout: `kubectl logs` shows each request.
+      meshConfig:
+        accessLogFile: /dev/stdout
+---
+apiVersion: addons.kubernetes.vmware.com/v1alpha1
+kind: AddonInstall
+metadata:
+  name: customer-cluster-01-istio
+  namespace: customer-ns
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  addonRef:
+    name: istio
+  addonConfigNameTemplate: customer-cluster-01-istio
+  clusters:
+  - selector:
+      matchLabels:
+        cluster.x-k8s.io/cluster-name: customer-cluster-01
+  crossNamespaceSelection: Blocked
+  releaseFilter:
+    ref:
+      name: istio.kubernetes.vmware.com.1.30.0-vmware.1-vks.1
+  stopMatchingBehavior: Delete

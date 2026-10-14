@@ -1,0 +1,50 @@
+# One ArgoCD Application per add-on folder of customer-cluster-01.
+#
+#   kubectl --context <supervisor> apply -f supervisor/applicationsets/customer-cluster-01-addons.yaml
+#
+# Every folder under supervisor/clusters/customer-cluster-01/addons/ becomes an
+# Application customer-cluster-01-<folder>, which applies that folder to the
+# Supervisor. VKS then installs the add-on into the cluster.
+#
+#   add a folder, push     -> new Application, synced automatically
+#   delete a folder, push  -> Application deleted; its finalizer deletes the
+#                             AddonInstall, so VKS uninstalls the add-on
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: customer-cluster-01-addons
+  namespace: customer-ns
+spec:
+  goTemplate: true
+  # Fail on a typo in a template variable instead of rendering an empty string.
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+  - git:
+      repoURL: https://git.customer.local/platform/customer-poc.git   # CHANGE
+      revision: main
+      directories:
+      - path: supervisor/clusters/customer-cluster-01/addons/*
+  template:
+    metadata:
+      name: 'customer-cluster-01-{{ .path.basename }}'
+      labels:
+        cluster: customer-cluster-01
+        kind: vks-addon
+      # Without this, deleting an Application would leave its add-on installed.
+      finalizers:
+      - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: default
+      source:
+        repoURL: https://git.customer.local/platform/customer-poc.git   # CHANGE
+        targetRevision: main
+        path: '{{ .path.path }}'
+      destination:
+        name: supervisor
+        namespace: customer-ns
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - ServerSideApply=true

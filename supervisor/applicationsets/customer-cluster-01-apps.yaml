@@ -1,0 +1,41 @@
+# One ArgoCD Application per application folder of customer-cluster-01.
+#
+#   kubectl --context <supervisor> apply -f supervisor/applicationsets/customer-cluster-01-apps.yaml
+#
+# Every folder under customer-cluster-01/apps/ becomes an Application
+# app-<folder>, deployed INTO the workload cluster. Onboarding an app team =
+# adding a folder with its namespace, workload and HTTPRoute (see sample-app).
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: customer-cluster-01-apps
+  namespace: customer-ns
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+  - git:
+      repoURL: https://git.customer.local/platform/customer-poc.git   # CHANGE
+      revision: main
+      directories:
+      - path: customer-cluster-01/apps/*
+  template:
+    metadata:
+      name: 'app-{{ .path.basename }}'
+      labels:
+        cluster: customer-cluster-01
+        kind: app
+      finalizers:
+      - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: default
+      source:
+        repoURL: https://git.customer.local/platform/customer-poc.git   # CHANGE
+        targetRevision: main
+        path: '{{ .path.path }}'
+      destination:
+        name: customer-cluster-01
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true

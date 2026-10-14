@@ -1,0 +1,42 @@
+# Grafana's namespace and its route on the shared Istio gateway:
+#   https://grafana.apps.customer.local -> customer-gateway -> Service grafana:80 -> pod :3000
+#
+# Applied INSIDE customer-cluster-01 by the ArgoCD app customer-cluster-01-grafana,
+# together with the Grafana Helm chart (the chart and its values are in that
+# Application: supervisor/applications/customer-cluster-01-grafana.yaml).
+#
+# Before the first sync, create the admin login (kept out of git):
+#   kubectl --context customer-cluster-01:customer-cluster-01 -n grafana create secret generic grafana-admin \
+#     --from-literal=admin-user=admin --from-literal=admin-password="$(openssl rand -base64 18)"
+#   (the namespace comes from this file; create it first if the secret comes first:
+#    kubectl ... create namespace grafana, then label it as below)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: grafana
+  labels:
+    # Lets the HTTPRoute below attach to the shared gateway (allowedRoutes).
+    customer.local/gateway-access: "true"
+    # No pod-security label: the Grafana chart's pods meet "restricted",
+    # the VKS default (checked with a server dry-run).
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: grafana
+  namespace: grafana
+spec:
+  parentRefs:
+  - name: customer-gateway
+    namespace: customer-gateway
+    sectionName: https
+  hostnames:
+  - grafana.apps.customer.local
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: grafana
+      port: 80

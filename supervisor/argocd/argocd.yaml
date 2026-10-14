@@ -1,0 +1,46 @@
+# ArgoCD on the Supervisor, in the vSphere Namespace customer-ns.
+#
+#   kubectl --context <supervisor> apply -f supervisor/argocd/argocd.yaml
+#
+# Needs the ArgoCD Service installed on the Supervisor (vCenter > Supervisor
+# Management > Services); this resource is then the whole install. The
+# namespace customer-ns must already exist (created in vCenter).
+#
+# Every setting this resource accepts:
+#   kubectl explain argocd.spec --recursive
+apiVersion: argocd-service.vsphere.vmware.com/v1alpha1
+kind: ArgoCD
+metadata:
+  name: argocd
+  namespace: customer-ns
+spec:
+  # Must be on the Supervisor's supported list, or the instance reports
+  # Failed. VCF 9.1 offers 3.4.4 and 3.3.12 as "Recommended":
+  #   kubectl get argocdversions argocd-supported-versions -o yaml
+  version: 3.4.4+vmware.1-vks.1
+
+  # The UI/API gets a LoadBalancer Service with a VIP from the Supervisor's
+  # load balancer. No Contour, no Ingress.
+  enableLoadBalancer: true
+
+  # Generates one Application per add-on folder and per app folder
+  # (supervisor/applicationsets/). Off by default.
+  applicationSet:
+    enabled: true
+    proxy: &proxy
+      httpProxy: http://proxy.customer.local:3128
+      httpsProxy: http://proxy.customer.local:3128
+      # Everything ArgoCD reaches directly: the Supervisor API (in-cluster
+      # service and its VIP), the workload clusters' API VIPs, internal names.
+      # CHANGE the CIDRs to the customer's: VPC / namespace networks and the
+      # Supervisor management network.
+      noProxy: localhost,127.0.0.1,.svc,.cluster.local,kubernetes.default.svc,.customer.local,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+
+  # Proxy per component. The repo server is the one that matters: it clones
+  # git and pulls Helm charts. The ApplicationSet controller reads git for its
+  # generators. The server needs it for OIDC or repo checks from the UI.
+  # The application controller only talks to clusters, so it gets none.
+  repo:
+    proxy: *proxy
+  server:
+    proxy: *proxy

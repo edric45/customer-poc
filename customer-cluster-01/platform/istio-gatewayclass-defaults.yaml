@@ -1,0 +1,26 @@
+# Defaults for every Gateway of GatewayClass "istio": adds a seccomp profile to
+# the gateway pods istiod creates for each Gateway.
+#
+# Applied INSIDE customer-cluster-01 (ArgoCD app customer-cluster-01-platform).
+#
+# Why: VKS enforces the Pod Security "restricted" profile in every unlabelled
+# namespace, and restricted requires a seccomp profile. Istio's gateway
+# template only sets one when configured, and the VKS Istio add-on leaves it
+# empty. Without this, a Gateway gets a Deployment whose pods are rejected,
+# and never receives an address. istiod reads this ConfigMap by its label and
+# merges it into every Gateway's Deployment. It must live in istio-system.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: istio-gatewayclass-defaults
+  namespace: istio-system
+  labels:
+    gateway.istio.io/defaults-for-class: istio
+data:
+  deployment: |
+    spec:
+      template:
+        spec:
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault

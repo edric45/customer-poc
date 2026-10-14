@@ -1,0 +1,127 @@
+# Workload cluster customer-cluster-01 (Antrea CNI), declared on the Supervisor in
+# the vSphere Namespace customer-ns. Synced by ArgoCD (manual sync), or by hand:
+#   kubectl --context <supervisor> apply -f supervisor/clusters/customer-cluster-01/cluster.yaml
+#
+# Every variable below is defined by the ClusterClass. To see them all:
+#   kubectl -n vmware-system-vks-public get clusterclass builtin-generic-v3.7.0 \
+#     -o jsonpath='{.status.variables}'
+#
+# The VM classes and the storage policy must be assigned to customer-ns in vCenter:
+#   kubectl -n customer-ns get virtualmachineclass,storageclass
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  name: customer-cluster-01
+  namespace: customer-ns
+  annotations:
+    # Deleting a Cluster deletes its VMs. ArgoCD must never do that, whether by
+    # pruning or by deleting the Application. Tearing down is a human with kubectl.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  # Internal to the cluster, but must not overlap any network the pods need to
+  # reach: the Supervisor, vCenter, the VPC, the proxy, the customer's networks.
+  clusterNetwork:
+    services:
+      cidrBlocks: [10.96.0.0/12]
+    pods:
+      cidrBlocks: [192.168.156.0/20]
+    serviceDomain: cluster.local
+
+  topology:
+    classRef:
+      name: builtin-generic-v3.7.0
+      namespace: vmware-system-vks-public
+    # A KubernetesRelease with READY and COMPATIBLE True:
+    #   kubectl get kubernetesreleases
+    version: v1.35.6+vmware.2
+
+    # Cluster-wide values. A value set under controlPlane or a worker pool
+    # REPLACES the cluster-level one for that variable; it does not merge.
+    variables:
+    - name: vmClass
+      value: best-effort-medium
+    - name: storageClass
+      value: vsan-default-storage-policy
+
+    # Antrea is the default; written out so the choice is visible. Set once:
+    # it cannot be changed after the cluster exists. For Cilium see
+    # supervisor/clusters/customer-cilium-01/.
+    - name: bootstrapAddons
+      value:
+        cniRef:
+          name: antrea
+          namespace: vmware-system-vks-public
+
+    - name: osConfiguration
+      value:
+        # Proxy for the NODES: containerd (image pulls) and kubelet get
+        # http_proxy / https_proxy / no_proxy. Pods do NOT inherit this; an app
+        # that calls the internet needs its own HTTP(S)_PROXY env.
+        systemProxy:
+          http: http://proxy.customer.local:3128
+          https: http://proxy.customer.local:3128
+          # Everything reached directly. Missing entries break the cluster in
+          # quiet ways (image pulls from Harbor through the proxy, API calls
+          # to the Supervisor refused by the proxy). Domains match subdomains;
+          # CIDRs only match connections made by IP.
+          noProxy:
+          - localhost
+          - 127.0.0.1
+          - .svc
+          - .svc.cluster.local
+          - .cluster.local
+          - 10.96.0.0/12          # services (clusterNetwork above)
+          - 192.168.156.0/20      # pods (clusterNetwork above)
+          - .customer.local          # internal DNS domain: Harbor, vCenter, git
+          - harbor.customer.local    # explicit, so image pulls never go via the proxy
+          # CHANGE: the VPC / namespace networks (node IPs and LB VIPs) and the
+          # Supervisor management network (Supervisor API VIP, vCenter).
+          - 10.0.0.0/8
+          - 172.16.0.0/12
+
+        # Harbor's CA: nothing to do here. Harbor installed as a Supervisor
+        # Service with the vmware-vRegistry label (harbor-values.yaml) is
+        # trusted by every VKS cluster on the Supervisor automatically
+        # (Broadcom, "Using Harbor as a Private Registry").
+        #
+        # Fallback, only if pulls from Harbor fail with x509 errors, or for
+        # another private registry: trust its CA explicitly. A CA certificate
+        # is public, so inline content is fine (this is how PAIS adds Harbor's
+        # CA to its own cluster in our lab). Adding it rolls the nodes.
+        #   curl -sk https://harbor.customer.local/api/v2.0/systeminfo/getcert
+        # trust:
+        #   additionalTrustedCAs:
+        #   - caCert:
+        #       content: |
+        #         -----BEGIN CERTIFICATE-----
+        #         ...
+        #         -----END CERTIFICATE-----
+
+    controlPlane:
+      # 1 for a POC. 3 to show the control plane surviving a node failure.
+      replicas: 1
+
+    workers:
+      machineDeployments:
+      - class: node-pool
+        name: customer-cluster-01-np01
+        replicas: 3
+        variables:
+          overrides:
+          - name: vmClass
+            value: best-effort-large
+          # Images and emptyDir data get their own disks instead of filling
+          # the root disk.
+          - name: volumes
+            value:
+            - name: containerd
+              mountPath: /var/lib/containerd
+              capacity: 50Gi
+              storageClass: vsan-default-storage-policy
+            - name: kubelet
+              mountPath: /var/lib/kubelet
+              capacity: 50Gi
+              storageClass: vsan-default-storage-policy
+
+# Changing vmClass, storageClass, volumes or osConfiguration triggers a
+# ROLLOUT: VKS replaces the affected nodes one at a time with new VMs.

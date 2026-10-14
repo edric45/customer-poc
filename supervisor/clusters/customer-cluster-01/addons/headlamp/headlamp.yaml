@@ -1,0 +1,64 @@
+# Headlamp (Kubernetes web UI) on customer-cluster-01, as a VKS add-on, reached
+# over HTTPS through its own Istio Gateway (Gateway API, class istio).
+#
+# With gatewayApi.enabled the add-on creates, in namespace "headlamp":
+#   Gateway   class istio, HTTPS :443 for `hostname` only, TLS ended at Envoy
+#   HTTPRoute hostname -> Service headlamp:80
+#   Issuer + Certificate   self-signed, via the cert-manager add-on
+# and makes the Service ClusterIP, so the Gateway holds the only VIP.
+#
+# Its own Gateway, not the shared customer-gateway: the add-on's route can only
+# point at a Gateway in its own namespace (the add-on has no setting for
+# another one). So Headlamp gets its own VIP and its own DNS record:
+#   kubectl --context customer-cluster-01:customer-cluster-01 -n headlamp get gateway   # ADDRESS
+#   DNS: headlamp.customer.local -> ADDRESS
+# The listener matches the hostname only: open Headlamp by name, not by IP.
+#
+# Login: a token for the headlamp-admin account (customer-cluster-01/platform/
+# headlamp-admin.yaml), not the add-on's own account, which has no rights:
+#   kubectl --context customer-cluster-01:customer-cluster-01 -n headlamp create token headlamp-admin --duration 8h
+#
+# Needs the cert-manager and istio add-ons (both in this folder's siblings).
+# The add-on labels its namespace pod-security "privileged".
+#
+# Releases on offer, and the settings one accepts:
+#   kubectl -n vmware-system-vks-public get addonreleases | grep headlamp
+#   kubectl -n vmware-system-vks-public get addonconfigdefinition \
+#     headlamp.kubernetes.vmware.com.0.42.0---vmware.1-vks.1 -o yaml
+apiVersion: addons.kubernetes.vmware.com/v1alpha1
+kind: AddonConfig
+metadata:
+  name: customer-cluster-01-headlamp
+  namespace: customer-ns
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  values:
+    # Also the certificate's DNS name.
+    hostname: headlamp.customer.local
+    gatewayApi:
+      enabled: true
+      gateway:
+        className: istio
+---
+apiVersion: addons.kubernetes.vmware.com/v1alpha1
+kind: AddonInstall
+metadata:
+  name: customer-cluster-01-headlamp
+  namespace: customer-ns
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  addonRef:
+    name: headlamp
+  addonConfigNameTemplate: customer-cluster-01-headlamp
+  clusters:
+  - selector:
+      matchLabels:
+        cluster.x-k8s.io/cluster-name: customer-cluster-01
+  crossNamespaceSelection: Blocked
+  releaseFilter:
+    ref:
+      name: headlamp.kubernetes.vmware.com.0.42.0-vmware.1-vks.1
+  # Deleting this AddonInstall uninstalls Headlamp, its Gateway and its VIP.
+  stopMatchingBehavior: Delete

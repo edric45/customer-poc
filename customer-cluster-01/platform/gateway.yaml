@@ -1,0 +1,85 @@
+# The shared ingress of customer-cluster-01: one Istio Gateway (Gateway API) for
+# every app, on one VIP, for *.apps.customer.local.
+#
+# Applied INSIDE customer-cluster-01 (ArgoCD app customer-cluster-01-platform).
+#
+#   platform team owns: this namespace, the Gateway, the wildcard certificate
+#   app teams own:      an HTTPRoute in their own namespace (see apps/sample-app)
+#
+# istiod sees the Gateway and creates, in this namespace, an Envoy Deployment
+# and a Service of type LoadBalancer; the Supervisor's load balancer (NSX LB
+# here) gives it the VIP. Point a wildcard DNS record *.apps.customer.local at it:
+#   kubectl -n customer-gateway get gateway customer-gateway    # ADDRESS
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: customer-gateway
+---
+# Wildcard certificate from the cert-manager add-on's ClusterIssuer
+# "selfsigned", which is a private CA (root in cert-manager/selfsigned-root-ca).
+# Browsers trust it once that root is imported. For the customer's own CA, replace
+# issuerRef with an Issuer for their CA, or put their certificate in the
+# secret customer-apps-tls and delete this Certificate.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: customer-apps-tls
+  namespace: customer-gateway
+spec:
+  secretName: customer-apps-tls
+  dnsNames:
+  - "*.apps.customer.local"
+  issuerRef:
+    kind: ClusterIssuer
+    name: selfsigned
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: customer-gateway
+  namespace: customer-gateway
+spec:
+  gatewayClassName: istio
+  listeners:
+  # HTTPS: TLS ends at Envoy, plain HTTP to the app inside the cluster.
+  - name: https
+    hostname: "*.apps.customer.local"
+    port: 443
+    protocol: HTTPS
+    tls:
+      mode: Terminate
+      certificateRefs:
+      - kind: Secret
+        name: customer-apps-tls
+    # Only namespaces the platform team labels may attach routes, so an app
+    # cannot claim another app's hostname by accident.
+    allowedRoutes:
+      namespaces:
+        from: Selector
+        selector:
+          matchLabels:
+            customer.local/gateway-access: "true"
+  # HTTP: only redirects to HTTPS (route below).
+  - name: http
+    hostname: "*.apps.customer.local"
+    port: 80
+    protocol: HTTP
+    allowedRoutes:
+      namespaces:
+        from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: redirect-to-https
+  namespace: customer-gateway
+spec:
+  parentRefs:
+  - name: customer-gateway
+    sectionName: http
+  rules:
+  - filters:
+    - type: RequestRedirect
+      requestRedirect:
+        scheme: https
+        statusCode: 301

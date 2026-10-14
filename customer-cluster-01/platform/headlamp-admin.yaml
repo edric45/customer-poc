@@ -1,0 +1,39 @@
+# A login for Headlamp: a ServiceAccount with full rights in customer-cluster-01.
+#
+#   kubectl --context customer-cluster-01:customer-cluster-01 -n headlamp create token headlamp-admin --duration 8h
+#
+# Paste the token at Headlamp's login. Applied INSIDE the cluster by the
+# ArgoCD app customer-cluster-01-platform.
+#
+# Why not the add-on's own account: the Headlamp add-on (0.42.0-vmware.1-vks.1)
+# puts its ServiceAccount "headlamp" in namespace headlamp, but its
+# ClusterRoleBinding still names kube-system/headlamp, which does not exist. A
+# token for headlamp/headlamp therefore has no rights, and every page says
+# "You don't have permissions" (seen in our lab). Patching the add-on's
+# binding would be reverted by VKS; a separate account is not.
+#
+# POC only: anyone holding a token is cluster-admin until it expires. For a
+# read-only login, bind the built-in "view" ClusterRole instead.
+#
+# Lives in the headlamp namespace, which the add-on creates: install the
+# headlamp add-on first (README step 5). Until it exists this sync fails and
+# the platform app retries.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: headlamp-admin
+  namespace: headlamp
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  # Not "headlamp-admin": that name is taken by the add-on's own binding.
+  name: headlamp-login-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: headlamp-admin
+  namespace: headlamp

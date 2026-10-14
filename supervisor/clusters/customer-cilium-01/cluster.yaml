@@ -1,0 +1,96 @@
+# Workload cluster customer-cilium-01: the same cluster as customer-cluster-01, with
+# Cilium as the CNI instead of Antrea. See docs/cilium.md.
+#
+#   kubectl --context <supervisor> apply -f supervisor/clusters/customer-cilium-01/cluster.yaml
+#
+# Not synced by any ArgoCD Application: it is the alternative to try side by
+# side. Add an Application like supervisor/applications/customer-cluster-01.yaml
+# if it becomes the main cluster.
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  name: customer-cilium-01
+  namespace: customer-ns
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  clusterNetwork:
+    services:
+      cidrBlocks: [10.96.0.0/12]
+    pods:
+      cidrBlocks: [192.168.172.0/20]
+    serviceDomain: cluster.local
+
+  topology:
+    classRef:
+      name: builtin-generic-v3.7.0
+      namespace: vmware-system-vks-public
+    # bootstrapAddons needs Kubernetes 1.35 or later.
+    version: v1.35.6+vmware.2
+
+    variables:
+    - name: vmClass
+      value: best-effort-medium
+    - name: storageClass
+      value: vsan-default-storage-policy
+
+    # THE difference: the CNI add-on installed while the cluster bootstraps.
+    # Immutable ("bootstrapAddons cannot be updated after creation"): an
+    # existing Antrea cluster cannot be switched, only rebuilt.
+    # Releases on offer:
+    #   kubectl -n vmware-system-vks-public get addonreleases | grep cilium
+    - name: bootstrapAddons
+      value:
+        cniRef:
+          name: cilium
+          namespace: vmware-system-vks-public
+
+    # kube-proxy stays ON (the default). The ClusterClass allows turning it off
+    # for a CNI that replaces it (kubernetes.kubeProxyConfiguration.enabled:
+    # false, immutable), but the VKS Cilium add-on exposes no
+    # kubeProxyReplacement setting, so whether Cilium takes over services then
+    # is unverified. Not for the POC.
+
+    - name: osConfiguration
+      value:
+        systemProxy:
+          http: http://proxy.customer.local:3128
+          https: http://proxy.customer.local:3128
+          noProxy:
+          - localhost
+          - 127.0.0.1
+          - .svc
+          - .svc.cluster.local
+          - .cluster.local
+          - 10.96.0.0/12
+          - 192.168.172.0/20
+          - .customer.local
+          - harbor.customer.local
+          # CHANGE: VPC / namespace networks and the Supervisor management network.
+          - 10.0.0.0/8
+          - 172.16.0.0/12
+        # Harbor's CA is trusted automatically (see customer-cluster-01/cluster.yaml
+        # for the explicit fallback).
+
+    controlPlane:
+      replicas: 1
+
+    workers:
+      machineDeployments:
+      - class: node-pool
+        name: customer-cilium-01-np01
+        replicas: 3
+        variables:
+          overrides:
+          - name: vmClass
+            value: best-effort-large
+          - name: volumes
+            value:
+            - name: containerd
+              mountPath: /var/lib/containerd
+              capacity: 50Gi
+              storageClass: vsan-default-storage-policy
+            - name: kubelet
+              mountPath: /var/lib/kubelet
+              capacity: 50Gi
+              storageClass: vsan-default-storage-policy

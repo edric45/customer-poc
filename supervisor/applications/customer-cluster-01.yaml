@@ -1,0 +1,30 @@
+# The ArgoCD Application for the customer-cluster-01 Cluster resource.
+#
+#   kubectl --context <supervisor> apply -f supervisor/applications/customer-cluster-01.yaml
+#
+# Sync is MANUAL on purpose: a sync creates, resizes or replaces VMs, so a
+# human reviews the diff and presses Sync. Add-ons and apps are ApplicationSets
+# (supervisor/applicationsets/) and sync automatically.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: customer-cluster-01
+  namespace: customer-ns
+  # No resources-finalizer: deleting this Application must never delete the
+  # Cluster. (The Cluster's Prune=false,Delete=false annotation guards it too.)
+spec:
+  project: default
+  source:
+    repoURL: https://git.customer.local/platform/customer-poc.git   # CHANGE
+    targetRevision: main
+    path: supervisor/clusters/customer-cluster-01
+    directory:
+      # Only cluster.yaml: addons/ belongs to the add-on ApplicationSet.
+      include: cluster.yaml
+  destination:
+    # The Supervisor, registered in ArgoCD under this name (README, step 3).
+    name: supervisor
+    namespace: customer-ns
+  syncPolicy:
+    syncOptions:
+    - ServerSideApply=true

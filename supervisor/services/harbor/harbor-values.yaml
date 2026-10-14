@@ -1,0 +1,91 @@
+# Our configuration for the Harbor Supervisor Service (the regional Harbor).
+#
+# NOT applied with kubectl. In vCenter: Supervisor Management > Services >
+# Harbor > Actions > Install on Supervisors, and paste this YAML into the
+# configuration box, with the REPLACE_ME values filled in (README, step 2).
+# Keep the filled-in copy out of git (*.local.yaml is ignored).
+#
+# Built from Broadcom's defaults in this folder
+# (supervisor-service-harbor-data-values-v2.15.2.yml), keeping only what we
+# change or what Broadcom marks required. Harbor 2.15.2 and the 2.14.2 that
+# vCenter 9.1 ships have the same settings schema, so this works for either.
+
+# The name everyone uses for Harbor: UI, docker login, image references in
+# the clusters. It must resolve in DNS to Harbor's LoadBalancer IP (README,
+# step 2), and it is the name in Harbor's TLS certificate.
+hostname: harbor.customer.local
+
+# Expose Harbor with its own nginx behind a Service of type LoadBalancer: the
+# Supervisor's load balancer (NSX LB or Avi) gives it a VIP, and no Contour
+# service is needed. This is how our lab Harbor runs. Broadcom's default is
+# the opposite (Contour); the two can't both be true. For the Contour way,
+# see supervisor/services/contour/.
+enableNginxLoadBalancer: true
+enableContourHttpProxy: false
+
+# Broadcom: "This should always set to true for Supervisor service".
+createNetworkPolicy: true
+
+tlsCertificate:
+  # Broadcom: "Do not change tlsSecretLabels. It is required for VKS
+  # integration to work." With it, VKS clusters on this Supervisor trust
+  # Harbor's certificate automatically (no per-cluster CA setup), and
+  # installing Harbor when clusters already exist rolls their nodes to add it.
+  tlsSecretLabels: {"managed-by": "vmware-vRegistry"}
+  # No tls.crt / tls.key / ca.crt: Harbor issues its own CA and a certificate
+  # for `hostname`, fine for a POC. To use the customer's CA instead, set all three
+  # here (ca.crt is what VKS then installs on the nodes).
+
+# Required secrets. The README's fill-in command replaces every REPLACE_ME
+# with a random value of the right length (secretKey 16, xsrfKey 32
+# characters). The admin password is yours to choose: Harbor's policy wants
+# 8+ characters with upper case, lower case and a digit.
+harborAdminPassword: SET_ADMIN_PASSWORD
+secretKey: REPLACE_ME_16_CHARS
+core:
+  secret: REPLACE_ME
+  xsrfKey: REPLACE_ME_32_CHARS
+jobservice:
+  secret: REPLACE_ME
+registry:
+  secret: REPLACE_ME
+database:
+  type: internal
+  password: REPLACE_ME
+
+# Outbound proxy for Harbor itself: proxy-cache projects (Docker Hub, quay.io
+# ...) and the Trivy vulnerability database download. Internal names must be
+# in noProxy, or Harbor tries to reach them through the proxy.
+proxy:
+  httpProxy: http://proxy.customer.local:3128
+  httpsProxy: http://proxy.customer.local:3128
+  noProxy: 127.0.0.1,localhost,.local,.internal,.svc,.cluster.local,.customer.local
+
+trivy:
+  enabled: true
+  # Broadcom's Supervisor default: the vulnerability DB lives on the Trivy
+  # volume, because a vSphere Pod's own disk is too small for it.
+  tmpdir: /home/scanner/.cache
+
+network:
+  ipFamilies: ["IPv4"]
+
+# Volumes on the Supervisor. storageClass is a storage policy assigned to the
+# Supervisor, by its Kubernetes name (lowercase, dashes). Broadcom's template
+# leaves "insert-storage-class-name-here": it must be set.
+persistence:
+  persistentVolumeClaim:
+    registry:
+      size: 200Gi
+      storageClass: vsan-default-storage-policy
+    database:
+      size: 10Gi
+      storageClass: vsan-default-storage-policy
+    jobservice:
+      jobLog:
+        storageClass: vsan-default-storage-policy
+    redis:
+      storageClass: vsan-default-storage-policy
+    trivy:
+      size: 10Gi
+      storageClass: vsan-default-storage-policy

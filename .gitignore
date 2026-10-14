@@ -1,0 +1,6 @@
+# Filled-in copies with real passwords or keys. Never commit them.
+*.local.yaml
+*.kubeconfig
+kubeconfig*
+*.key
+.DS_Store
