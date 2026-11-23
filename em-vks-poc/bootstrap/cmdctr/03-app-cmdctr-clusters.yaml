@@ -1,0 +1,26 @@
+# Argo CD Application that creates the VKS clusters defined in git under
+# envs/cmdctr/clusters/ in the cmdctr namespace.
+#
+# Before applying: register the git repository in Argo CD (UI: Settings →
+# Repositories, or `argocd repo add <url> --username … --password …`).
+# Credentials are not kept in git.
+#
+#   kubectl apply -f bootstrap/cmdctr/03-app-cmdctr-clusters.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cmdctr-clusters
+  namespace: emr-cmdctr-xxxxx
+spec:
+  project: default
+  source:
+    repoURL: <emr-vks_iaac repository URL>
+    targetRevision: main
+    path: envs/cmdctr/clusters
+    directory:
+      recurse: true
+  destination:
+    name: cmdctr-namespace          # clusterName from 02-managedentity-cmdctr-namespace.yaml
+    namespace: emr-cmdctr-xxxxx
+  syncPolicy:
+    automated: {}

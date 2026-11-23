@@ -1,0 +1,42 @@
+# cert-manager on emr-cmdctr-vks-01, as a VKS add-on.
+# Applied to the Supervisor namespace; VKS installs it into the cluster.
+# Contour depends on it.
+#
+#   AddonConfig   the settings
+#   AddonInstall  which add-on, which cluster, which release
+#
+# Releases on offer:
+#   kubectl -n vmware-system-vks-public get addonreleases | grep cert-manager
+apiVersion: addons.kubernetes.vmware.com/v1alpha1
+kind: AddonConfig
+metadata:
+  name: emr-cmdctr-vks-01-cert-manager
+  namespace: emr-cmdctr-xxxxx
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"    # config before install
+spec:
+  values:
+    namespace: cert-manager
+---
+apiVersion: addons.kubernetes.vmware.com/v1alpha1
+kind: AddonInstall
+metadata:
+  name: emr-cmdctr-vks-01-cert-manager
+  namespace: emr-cmdctr-xxxxx
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  addonRef:
+    name: cert-manager
+  addonConfigNameTemplate: emr-cmdctr-vks-01-cert-manager
+  clusters:
+  - selector:
+      matchLabels:
+        cluster.x-k8s.io/cluster-name: emr-cmdctr-vks-01
+  crossNamespaceSelection: Blocked
+  # Pinned: the version only changes with a commit.
+  releaseFilter:
+    ref:
+      name: cert-manager.kubernetes.vmware.com.1.20.2-vmware.1-vks.1
+  # Deleting this AddonInstall uninstalls the add-on from the cluster.
+  stopMatchingBehavior: Delete

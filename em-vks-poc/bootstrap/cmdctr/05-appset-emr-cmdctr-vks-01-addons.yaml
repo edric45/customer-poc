@@ -1,0 +1,48 @@
+# One Argo CD Application per add-on folder of emr-cmdctr-vks-01.
+#
+#   kubectl apply -f bootstrap/cmdctr/05-appset-emr-cmdctr-vks-01-addons.yaml
+#
+# Every folder under envs/cmdctr/addons/emr-cmdctr-vks-01/ becomes an
+# Application named emr-cmdctr-vks-01-<folder>. It applies the folder to the
+# Supervisor namespace, and VKS installs the add-on into the cluster.
+#
+#   add a folder, push     -> add-on installed
+#   delete a folder, push  -> add-on uninstalled
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: emr-cmdctr-vks-01-addons
+  namespace: emr-cmdctr-xxxxx
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+  - git:
+      repoURL: <emr-vks_iaac repository URL>
+      revision: main
+      directories:
+      - path: envs/cmdctr/addons/emr-cmdctr-vks-01/*
+  template:
+    metadata:
+      name: 'emr-cmdctr-vks-01-{{ .path.basename }}'
+      labels:
+        cluster: emr-cmdctr-vks-01
+        kind: vks-addon
+      # Deleting an Application (its folder) also uninstalls its add-on.
+      finalizers:
+      - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: default
+      source:
+        repoURL: <emr-vks_iaac repository URL>
+        targetRevision: main
+        path: '{{ .path.path }}'
+      destination:
+        name: cmdctr-namespace        # clusterName from 02-managedentity-cmdctr-namespace.yaml
+        namespace: emr-cmdctr-xxxxx
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - ServerSideApply=true

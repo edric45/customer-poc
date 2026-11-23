@@ -1,0 +1,21 @@
+# Argo CD instance in the cmdctr vSphere Namespace.
+# Apply from the namespace context (VCF CLI: emr:<namespace>:default-project):
+#   kubectl apply -f bootstrap/cmdctr/01-argocd-instance.yaml
+#
+# Replace emr-cmdctr-xxxxx with the real namespace name (VCF Automation adds a
+# random suffix) in every file of this folder.
+apiVersion: argocd-service.vsphere.vmware.com/v1alpha1
+kind: ArgoCD
+metadata:
+  name: argocd
+  namespace: emr-cmdctr-xxxxx
+spec:
+  # Must be a version the service offers, or the instance reports Failed.
+  # Use the one marked Recommended:
+  #   kubectl get argocdversions argocd-supported-versions -o yaml
+  version: <recommended version>
+  applicationSet:
+    enabled: true
+  # Gives the Argo CD UI/API an external IP. Get it with:
+  #   kubectl -n emr-cmdctr-xxxxx get svc argocd-server-vip
+  enableLoadBalancer: true

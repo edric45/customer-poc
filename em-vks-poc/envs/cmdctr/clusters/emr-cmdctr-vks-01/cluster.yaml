@@ -1,0 +1,83 @@
+# VKS cluster emr-cmdctr-vks-01, created by Argo CD (Application cmdctr-clusters).
+#
+# Values to check from the namespace context before committing:
+#   kubectl get kr | grep v1.36.4                                  # READY True, COMPATIBLE True
+#   kubectl -n vmware-system-vks-public get clusterclass           # newest builtin-generic-*
+#   kubectl -n emr-cmdctr-xxxxx get virtualmachineclass,storageclass
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  name: emr-cmdctr-vks-01
+  namespace: emr-cmdctr-xxxxx
+  annotations:
+    # Deleting a Cluster deletes all its VMs. This stops Argo CD from ever doing
+    # that, by pruning or by deleting the Application.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  clusterNetwork:
+    # Internal to the cluster. Must not overlap networks the pods need to reach.
+    services:
+      cidrBlocks:
+      - 10.96.0.0/12
+    pods:
+      cidrBlocks:
+      - 192.168.0.0/16
+    serviceDomain: cluster.local
+
+  topology:
+    classRef:
+      name: builtin-generic-v3.7.0
+      namespace: vmware-system-vks-public
+    # Photon 5 node image (the default).
+    version: v1.36.4+vmware.2
+
+    variables:
+    - name: vmClass
+      value: best-effort-medium
+    - name: storageClass
+      value: <storage class>
+
+    # Outbound proxy for the nodes (image pulls, packages).
+    - name: osConfiguration
+      value:
+        systemProxy:
+          http: http://<proxy>:<port>
+          https: http://<proxy>:<port>
+          noProxy:
+          - localhost
+          - 127.0.0.1
+          - .svc
+          - .cluster.local
+          - 10.96.0.0/12
+          - 192.168.0.0/16
+          - <VPC private ranges>
+          - <internal domain, e.g. .example.com>
+          - <Harbor FQDN>
+
+    controlPlane:
+      replicas: 1
+      variables:
+        overrides:
+        - name: vmClass
+          value: best-effort-medium
+
+    workers:
+      machineDeployments:
+      - class: node-pool
+        name: np01
+        replicas: 2
+        variables:
+          overrides:
+          - name: vmClass
+            value: best-effort-large
+          # Separate disks for images and pod data, so they can't fill the root disk.
+          - name: volumes
+            value:
+            - name: containerd
+              mountPath: /var/lib/containerd
+              capacity: 50Gi
+              storageClass: <storage class>
+            - name: kubelet
+              mountPath: /var/lib/kubelet
+              capacity: 50Gi
+              storageClass: <storage class>

@@ -1,0 +1,38 @@
+# Contour ingress on emr-cmdctr-vks-01, as a VKS add-on. Needs cert-manager.
+# Envoy gets one LoadBalancer IP; publish apps behind it with DNS names.
+#
+# Releases on offer:
+#   kubectl -n vmware-system-vks-public get addonreleases | grep contour
+apiVersion: addons.kubernetes.vmware.com/v1alpha1
+kind: AddonConfig
+metadata:
+  name: emr-cmdctr-vks-01-contour
+  namespace: emr-cmdctr-xxxxx
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  values:
+    envoy:
+      service:
+        type: LoadBalancer
+---
+apiVersion: addons.kubernetes.vmware.com/v1alpha1
+kind: AddonInstall
+metadata:
+  name: emr-cmdctr-vks-01-contour
+  namespace: emr-cmdctr-xxxxx
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  addonRef:
+    name: contour
+  addonConfigNameTemplate: emr-cmdctr-vks-01-contour
+  clusters:
+  - selector:
+      matchLabels:
+        cluster.x-k8s.io/cluster-name: emr-cmdctr-vks-01
+  crossNamespaceSelection: Blocked
+  releaseFilter:
+    ref:
+      name: contour.kubernetes.vmware.com.1.33.4-vmware.1-vks.1
+  stopMatchingBehavior: Delete

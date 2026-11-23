@@ -1,0 +1,44 @@
+# Prometheus (with Alertmanager, node-exporter, kube-state-metrics) on
+# emr-cmdctr-vks-01, as a VKS add-on.
+#
+# Releases on offer:
+#   kubectl -n vmware-system-vks-public get addonreleases | grep prometheus
+apiVersion: addons.kubernetes.vmware.com/v1alpha1
+kind: AddonConfig
+metadata:
+  name: emr-cmdctr-vks-01-prometheus
+  namespace: emr-cmdctr-xxxxx
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  values:
+    # Storage class set explicitly: the cluster may have no default class.
+    prometheus:
+      pvc:
+        storage: 50Gi
+        storageClassName: <storage class>
+    alertmanager:
+      pvc:
+        storage: 2Gi
+        storageClassName: <storage class>
+---
+apiVersion: addons.kubernetes.vmware.com/v1alpha1
+kind: AddonInstall
+metadata:
+  name: emr-cmdctr-vks-01-prometheus
+  namespace: emr-cmdctr-xxxxx
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  addonRef:
+    name: prometheus
+  addonConfigNameTemplate: emr-cmdctr-vks-01-prometheus
+  clusters:
+  - selector:
+      matchLabels:
+        cluster.x-k8s.io/cluster-name: emr-cmdctr-vks-01
+  crossNamespaceSelection: Blocked
+  releaseFilter:
+    ref:
+      name: prometheus.kubernetes.vmware.com.3.5.3-vmware.1-vks.1
+  stopMatchingBehavior: Delete

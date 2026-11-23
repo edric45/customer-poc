@@ -1,0 +1,20 @@
+# Registers the cmdctr vSphere Namespace as an Argo CD destination, so Argo CD
+# can create Cluster objects in it. Use this instead of `argocd cluster add`.
+#
+# Must be in the same namespace as the Argo CD instance.
+# Apply after the instance is Ready:
+#   kubectl apply -f bootstrap/cmdctr/02-managedentity-cmdctr-namespace.yaml
+#   kubectl -n emr-cmdctr-xxxxx get managedentity          # PHASE Ready
+apiVersion: argocd-service.vsphere.vmware.com/v1alpha1
+kind: ManagedEntity
+metadata:
+  name: cmdctr-namespace
+  namespace: emr-cmdctr-xxxxx
+spec:
+  # The destination name Applications use. Fixed here so it doesn't carry the
+  # random namespace suffix.
+  clusterName: cmdctr-namespace
+  targetRef:
+    apiGroup: ""
+    kind: Namespace
+    name: emr-cmdctr-xxxxx

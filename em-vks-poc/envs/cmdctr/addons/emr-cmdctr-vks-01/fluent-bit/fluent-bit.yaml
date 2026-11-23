@@ -1,0 +1,45 @@
+# Fluent Bit log shipping on emr-cmdctr-vks-01, as a VKS add-on.
+#
+# The output below discards logs (Name null) until EM's log destination is
+# known. The add-on's default output points at an example IP, so an output must
+# always be set. Replace it with the real destination (syslog, http, Splunk,
+# Elasticsearch, ...).
+#
+# Releases on offer:
+#   kubectl -n vmware-system-vks-public get addonreleases | grep fluent-bit
+apiVersion: addons.kubernetes.vmware.com/v1alpha1
+kind: AddonConfig
+metadata:
+  name: emr-cmdctr-vks-01-fluent-bit
+  namespace: emr-cmdctr-xxxxx
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  values:
+    fluent_bit:
+      config:
+        outputs: |
+          [OUTPUT]
+            Name   null
+            Match  *
+---
+apiVersion: addons.kubernetes.vmware.com/v1alpha1
+kind: AddonInstall
+metadata:
+  name: emr-cmdctr-vks-01-fluent-bit
+  namespace: emr-cmdctr-xxxxx
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  addonRef:
+    name: fluent-bit
+  addonConfigNameTemplate: emr-cmdctr-vks-01-fluent-bit
+  clusters:
+  - selector:
+      matchLabels:
+        cluster.x-k8s.io/cluster-name: emr-cmdctr-vks-01
+  crossNamespaceSelection: Blocked
+  releaseFilter:
+    ref:
+      name: fluent-bit.kubernetes.vmware.com.5.0.5-vmware.1-vks.1
+  stopMatchingBehavior: Delete

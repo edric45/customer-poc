@@ -1,0 +1,18 @@
+# Registers the VKS cluster as an Argo CD destination, for deploying apps
+# into it later. Apply once the cluster is up:
+#   kubectl -n emr-cmdctr-xxxxx get cluster emr-cmdctr-vks-01      # Available True
+#   kubectl apply -f bootstrap/cmdctr/04-managedentity-emr-cmdctr-vks-01.yaml
+#   kubectl -n emr-cmdctr-xxxxx get managedentity                  # PHASE Ready
+apiVersion: argocd-service.vsphere.vmware.com/v1alpha1
+kind: ManagedEntity
+metadata:
+  name: emr-cmdctr-vks-01
+  namespace: emr-cmdctr-xxxxx
+spec:
+  # Destination name for Applications that deploy into this cluster.
+  clusterName: emr-cmdctr-vks-01
+  targetRef:
+    apiGroup: cluster.x-k8s.io
+    kind: Cluster
+    name: emr-cmdctr-vks-01
+    namespace: emr-cmdctr-xxxxx
